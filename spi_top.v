@@ -1,5 +1,6 @@
 module spi_top(
     input wire reset_i,
+    input wire i_send_data,    // Input signal to control sending data
     output wire led0, led1, led2, led3, led4, led5, led6, led7,
     output wire w_Clk,
     output wire spi_clk_o,
@@ -39,10 +40,11 @@ module spi_top(
     wire m_tready;
     wire m_rxdv;
     wire [7:0] m_rxdata;
+    reg sending = 0;
 
     // SPI Master Instantiation
     SPI_Master #(
-        .SPI_MODE(0),                    // SPI Mode 3 (CPOL = 1, CPHA = 1)
+        .SPI_MODE(0),                    // SPI Mode 0 (CPOL = 0, CPHA = 0)
         .CLKS_PER_HALF_BIT(2)            // Clock divider: 2 (20.46 MHz / 2 = 10.23 MHz SCLK)
     ) spi_inst (
         .i_Rst_L(~reset_i),             // SPI Master active low reset
@@ -63,8 +65,17 @@ module spi_top(
             byte_index <= 0;
             m_tdat <= 8'b00000000;
             m_tvalid <= 1'b0;
+            sending <= 0;
         end else begin
-            if (byte_index <= 12) begin
+            if (i_send_data == 0 && !sending) begin
+                sending <= 1;
+                byte_index <= 0;
+            end else if (i_send_data == 1) begin
+                sending <= 0;
+                byte_index <= 0;
+            end
+
+            if (sending && byte_index <= 12) begin
                 if (!m_tvalid && m_tready) begin
                     m_tdat <= HELLO_WORLD[byte_index];
                     m_tvalid <= 1'b1;  // Start the transaction
@@ -72,6 +83,7 @@ module spi_top(
                     m_tvalid <= 1'b0;  // End the transaction
                     byte_index <= byte_index + 1;
                     if (byte_index > 12) begin
+                        sending <= 0;
                         byte_index <= 0;
                     end
                 end
